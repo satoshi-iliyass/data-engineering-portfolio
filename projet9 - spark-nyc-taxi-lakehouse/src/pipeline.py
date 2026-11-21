@@ -32,7 +32,7 @@ def spark_session(app: str = "nyc-taxi-lakehouse") -> SparkSession:
 
 
 def folder_mb(p: Path) -> float:
-    return round(sum(f.stat().st_size for f in p.rglob("*.parquet")) / 1e6, 1)
+    return round(sum(f.stat().st_size for f in p.rglob("*.parquet")) / 1e6, 3)
 
 
 def month_end(m: str) -> str:
@@ -80,8 +80,10 @@ def run(months: list[str], landing: Path, lake: Path) -> dict:
     one_day = spark.read.parquet(str(lake / "silver" / "trips")).filter(F.col("pickup_date") == f"{months[0]}-15")
     metrics["one_day_trips"] = one_day.count()
     t["one_day_query"] = time.perf_counter() - t0
-    metrics["partition_filter_pushed"] = "PartitionFilters: [isnotnull(pickup_date" in \
-        one_day._jdf.queryExecution().executedPlan().toString()
+    files = one_day.inputFiles()
+    metrics["one_day_files_read"] = len(files)
+    metrics["total_silver_files"] = len(spark.read.parquet(str(lake / "silver" / "trips")).inputFiles())
+    metrics["partition_filter_pushed"] = bool(files) and all(f"pickup_date={months[0]}-15" in f for f in files)
 
     metrics["seconds"] = {k: round(v, 1) for k, v in t.items()}
     metrics["sizes_mb"] = {"landing": round(sum((landing / f"yellow_tripdata_{m}.parquet").stat().st_size
@@ -114,9 +116,11 @@ def write_report(m: dict) -> None:
              f"({100 * m['rejected_rows'] / m['bronze_rows']:.2f} %), duplicates removed: {m['duplicates_removed']:,}",
              f"- Stage times: bronze {s['bronze']} s, silver {s['silver']} s, gold {s['gold']} s",
              f"- One-day query with partition pruning: {m['one_day_trips']:,} trips in {s['one_day_query']} s "
-             f"(partition filter pushed down: {m['partition_filter_pushed']})",
+             f"(partition pruning: {m['one_day_files_read']} of {m['total_silver_files']} silver files read, "
+             f"only the requested day: {m['partition_filter_pushed']})",
              f"- Zone join executed as broadcast hash join: {m['broadcast_join']}",
-             f"- Lake size (zstd Parquet): bronze {z['bronze']} MB, silver {z['silver']} MB, gold {z['gold']} MB", "",
+             f"- Lake size (zstd Parquet): bronze {z['bronze']:.1f} MB, silver {z['silver']:.1f} MB, "
+             f"gold {z['gold'] * 1000:.0f} KB", "",
              "## Rejection reasons", "", "| Reason | Rows |", "|---|---|"]
     lines += [f"| {k} | {v:,} |" for k, v in m["rejected"].items()]
     g = m["gold_preview"]
