@@ -10,6 +10,7 @@ End-to-end projects covering what clients most often need: collecting data (scra
 | 4 | [Sensor Analytics](projet4%20-%20sensor-analytics-duckdb) | 10 M rows on a laptop, Parquet, anomaly & wear detection | DuckDB, Parquet, SQL | CSV 387 MB → Parquet 23 MB, queries ~11× faster |
 | 5 | [Sales Data Warehouse](projet5%20-%20dbt-sales-warehouse) | Staging → star schema → KPI mart, fully tested | dbt, DuckDB, SQL | 29/29 dbt tests pass, revenue reconciles |
 | 6 | [Pipeline Orchestration](projet6%20-%20pipeline-orchestration) | Scheduled platform: retries, dependencies, data-freshness SLA, Slack alerts, CI | Prefect 3, GitHub Actions, pytest | 3 pipelines orchestrated, failures retried/alerted, 6 tests |
+| 7 | [AWS Serverless Data Lake](projet7%20-%20aws-serverless-data-lake) | S3 → Lambda → partitioned Parquet + Glue catalog, SQL on S3, IaC, least-privilege IAM | AWS S3, Lambda, Glue, IAM, pyarrow, DuckDB, moto | 4,966 rows, 1.9 % quarantined, corrections applied, 15 tests |
 
 ## Common engineering principles
 

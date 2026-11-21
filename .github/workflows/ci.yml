@@ -18,6 +18,7 @@ jobs:
           - "projet3 - excel-automation"
           - "projet4 - sensor-analytics-duckdb"
           - "projet6 - pipeline-orchestration"
+          - "projet7 - aws-serverless-data-lake"
     defaults:
       run:
         working-directory: ${{ matrix.project }}
