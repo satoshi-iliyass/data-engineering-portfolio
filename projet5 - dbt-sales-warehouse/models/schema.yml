@@ -1,0 +1,60 @@
+version: 2
+
+models:
+  - name: stg_orders
+    description: One row per order (source duplicates removed).
+    columns:
+      - name: order_id
+        tests: [unique, not_null]
+      - name: status
+        tests:
+          - accepted_values:
+              arguments:
+                values: ["completed", "shipped", "cancelled", "returned"]
+
+  - name: stg_customers
+    columns:
+      - name: customer_id
+        tests: [unique, not_null]
+      - name: country_code
+        tests:
+          - accepted_values:
+              arguments:
+                values: ["FR", "MA", "CA", "DE"]
+
+  - name: dim_customers
+    description: Customer dimension with lifetime value and segment.
+    columns:
+      - name: customer_id
+        tests: [unique, not_null]
+      - name: segment
+        tests:
+          - accepted_values:
+              arguments:
+                values: ["gold", "silver", "bronze"]
+
+  - name: dim_products
+    columns:
+      - name: product_id
+        tests: [unique, not_null]
+
+  - name: fct_order_items
+    description: Fact table, grain = one order line.
+    columns:
+      - name: order_item_id
+        tests: [unique, not_null]
+      - name: customer_id
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: customer_id
+      - name: product_id
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_products')
+                field: product_id
+
+  - name: mart_monthly_revenue
+    description: Monthly revenue KPIs by product category (completed + shipped orders).

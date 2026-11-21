@@ -1,0 +1,5 @@
+sensor,readings,missing,missing_pct
+current,2500000,5089,0.204
+pressure,2500000,5008,0.2
+temperature,2500000,4995,0.2
+vibration,2500000,5063,0.203

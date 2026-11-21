@@ -1,0 +1,1 @@
+Benchmark same query: CSV 0.32s vs Parquet 0.03s -> 11.4x faster
