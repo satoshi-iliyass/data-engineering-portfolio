@@ -7,6 +7,7 @@ Runs on Linux / a cluster (GitHub Actions in this repo). Writes reports/spark_re
 import argparse
 import json
 import os
+import re
 import time
 from datetime import date
 from pathlib import Path
@@ -80,10 +81,13 @@ def run(months: list[str], landing: Path, lake: Path) -> dict:
     one_day = spark.read.parquet(str(lake / "silver" / "trips")).filter(F.col("pickup_date") == f"{months[0]}-15")
     metrics["one_day_trips"] = one_day.count()
     t["one_day_query"] = time.perf_counter() - t0
-    files = one_day.inputFiles()
-    metrics["one_day_files_read"] = len(files)
-    metrics["total_silver_files"] = len(spark.read.parquet(str(lake / "silver" / "trips")).inputFiles())
-    metrics["partition_filter_pushed"] = bool(files) and all(f"pickup_date={months[0]}-15" in f for f in files)
+    plan = one_day._jdf.queryExecution().executedPlan().toString()
+    filters = re.findall(r"PartitionFilters: \[([^\]]*)\]", plan)
+    metrics["partition_filters"] = filters[0] if filters else ""
+    metrics["partition_filter_pushed"] = "pickup_date" in metrics["partition_filters"]
+    silver_dir = lake / "silver" / "trips"
+    metrics["one_day_files_read"] = len(list((silver_dir / f"pickup_date={months[0]}-15").glob("*.parquet")))
+    metrics["total_silver_files"] = len(list(silver_dir.rglob("*.parquet")))
 
     metrics["seconds"] = {k: round(v, 1) for k, v in t.items()}
     metrics["sizes_mb"] = {"landing": round(sum((landing / f"yellow_tripdata_{m}.parquet").stat().st_size
@@ -116,8 +120,8 @@ def write_report(m: dict) -> None:
              f"({100 * m['rejected_rows'] / m['bronze_rows']:.2f} %), duplicates removed: {m['duplicates_removed']:,}",
              f"- Stage times: bronze {s['bronze']} s, silver {s['silver']} s, gold {s['gold']} s",
              f"- One-day query with partition pruning: {m['one_day_trips']:,} trips in {s['one_day_query']} s "
-             f"(partition pruning: {m['one_day_files_read']} of {m['total_silver_files']} silver files read, "
-             f"only the requested day: {m['partition_filter_pushed']})",
+             f"(partition pruning: {m['one_day_files_read']} of {m['total_silver_files']} silver files scanned, "
+             f"PartitionFilters [{m['partition_filters']}], pushed: {m['partition_filter_pushed']})",
              f"- Zone join executed as broadcast hash join: {m['broadcast_join']}",
              f"- Lake size (zstd Parquet): bronze {z['bronze']:.1f} MB, silver {z['silver']:.1f} MB, "
              f"gold {z['gold'] * 1000:.0f} KB", "",
