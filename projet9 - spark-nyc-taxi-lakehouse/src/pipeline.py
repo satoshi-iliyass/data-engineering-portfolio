@@ -7,7 +7,7 @@ Runs on Linux / a cluster (GitHub Actions in this repo). Writes reports/spark_re
 import argparse
 import json
 import os
-import re
+
 import time
 from datetime import date
 from pathlib import Path
@@ -76,17 +76,18 @@ def run(months: list[str], landing: Path, lake: Path) -> dict:
         df.coalesce(1).write.mode("overwrite").parquet(str(lake / "gold" / name))
     t["gold"] = time.perf_counter() - t0
 
-    # partition pruning: a one-day query reads only that day's folder
-    t0 = time.perf_counter()
-    one_day = spark.read.parquet(str(lake / "silver" / "trips")).filter(F.col("pickup_date") == f"{months[0]}-15")
-    metrics["one_day_trips"] = one_day.count()
-    t["one_day_query"] = time.perf_counter() - t0
-    plan = one_day._jdf.queryExecution().executedPlan().toString()
-    filters = re.findall(r"PartitionFilters: \[([^\]]*)\]", plan)
-    metrics["partition_filters"] = filters[0] if filters else ""
-    metrics["partition_filter_pushed"] = "pickup_date" in metrics["partition_filters"]
+    # partition pruning, measured: the same aggregation on one day vs. on all days (fresh reads, no cache)
     silver_dir = lake / "silver" / "trips"
-    metrics["one_day_files_read"] = len(list((silver_dir / f"pickup_date={months[0]}-15").glob("*.parquet")))
+    day = F.to_date(F.lit(f"{months[0]}-15"))
+    agg = [F.count("*").alias("trips"), F.sum("total_amount").alias("revenue")]
+    t0 = time.perf_counter()
+    metrics["all_days_trips"] = spark.read.parquet(str(silver_dir)).agg(*agg).first()["trips"]
+    t["all_days_query"] = time.perf_counter() - t0
+    t0 = time.perf_counter()
+    metrics["one_day_trips"] = spark.read.parquet(str(silver_dir)).filter(F.col("pickup_date") == day) \
+        .agg(*agg).first()["trips"]
+    t["one_day_query"] = time.perf_counter() - t0
+    metrics["one_day_files"] = len(list((silver_dir / f"pickup_date={months[0]}-15").glob("*.parquet")))
     metrics["total_silver_files"] = len(list(silver_dir.rglob("*.parquet")))
 
     metrics["seconds"] = {k: round(v, 1) for k, v in t.items()}
@@ -119,9 +120,9 @@ def write_report(m: dict) -> None:
              f"- Rejected to quarantine: **{m['rejected_rows']:,}** "
              f"({100 * m['rejected_rows'] / m['bronze_rows']:.2f} %), duplicates removed: {m['duplicates_removed']:,}",
              f"- Stage times: bronze {s['bronze']} s, silver {s['silver']} s, gold {s['gold']} s",
-             f"- One-day query with partition pruning: {m['one_day_trips']:,} trips in {s['one_day_query']} s "
-             f"(partition pruning: {m['one_day_files_read']} of {m['total_silver_files']} silver files scanned, "
-             f"PartitionFilters [{m['partition_filters']}], pushed: {m['partition_filter_pushed']})",
+             f"- Partition pruning: revenue query on one day ({m['one_day_trips']:,} trips, folder of "
+             f"{m['one_day_files']} of {m['total_silver_files']} files) {s['one_day_query']} s vs all 91 days "
+             f"({m['all_days_trips']:,} trips) {s['all_days_query']} s",
              f"- Zone join executed as broadcast hash join: {m['broadcast_join']}",
              f"- Lake size (zstd Parquet): bronze {z['bronze']:.1f} MB, silver {z['silver']:.1f} MB, "
              f"gold {z['gold'] * 1000:.0f} KB", "",
