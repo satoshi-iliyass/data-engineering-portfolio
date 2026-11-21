@@ -1,0 +1,44 @@
+name: CI
+
+# Every push / pull request runs the test suite of every project.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - "projet1 - price-tracker-pipeline"
+          - "projet2 - weather-api-pipeline"
+          - "projet3 - excel-automation"
+          - "projet4 - sensor-analytics-duckdb"
+          - "projet6 - pipeline-orchestration"
+    defaults:
+      run:
+        working-directory: ${{ matrix.project }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+
+  dbt:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: "projet5 - dbt-sales-warehouse"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: dbt build --profiles-dir .
