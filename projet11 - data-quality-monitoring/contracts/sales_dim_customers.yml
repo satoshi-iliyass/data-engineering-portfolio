@@ -1,0 +1,14 @@
+dataset: dim_customers
+owner: data-engineering
+source:
+  type: duckdb
+  path: ../projet5 - dbt-sales-warehouse/warehouse.duckdb
+  table: main_marts.dim_customers
+volume_anomaly: true
+checks:
+  - {id: pk_unique,      type: unique,   column: customer_id, severity: critical}
+  - {id: email_present,  type: not_null, column: email, severity: critical}
+  - {id: email_format,   type: regex,    column: email, pattern: '^[^@\s]+@[^@\s]+\.[a-z]{2,}$', mostly: 0.99, severity: warning}
+  - {id: country_iso,    type: in_set,   column: country_code, values: [FR, DE, CA, MA, BE, ES, IT, GB, US], severity: warning}
+  - {id: segment_known,  type: in_set,   column: segment, values: [gold, silver, bronze], severity: critical}
+  - {id: revenue_positive, type: between, column: lifetime_revenue, min: 0, severity: critical}

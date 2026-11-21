@@ -19,6 +19,7 @@ jobs:
           - "projet4 - sensor-analytics-duckdb"
           - "projet6 - pipeline-orchestration"
           - "projet7 - aws-serverless-data-lake"
+          - "projet11 - data-quality-monitoring"
     defaults:
       run:
         working-directory: ${{ matrix.project }}
@@ -43,3 +44,14 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt
       - run: dbt build --profiles-dir .
+      # quality gate: the build fails if a CRITICAL data-contract check fails on the fresh warehouse
+      - name: Data quality gate (Great Expectations contracts)
+        working-directory: "projet11 - data-quality-monitoring"
+        run: |
+          pip install -r requirements.txt
+          python -m src.run
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: quality-report
+          path: "projet11 - data-quality-monitoring/reports/quality_report.html"

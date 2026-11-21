@@ -1,0 +1,14 @@
+dataset: hourly_weather
+owner: data-engineering
+optional: true                 # local-only source (not in git): skipped with a warning if missing
+source:
+  type: sqlite
+  path: ../projet2 - weather-api-pipeline/data/weather.db
+  table: hourly_weather
+volume_anomaly: true
+checks:
+  - {id: grain_unique, type: unique_combination, columns: [city, ts_utc], severity: critical}
+  - {id: temp_physical, type: between, column: temperature_c, min: -60, max: 60, severity: critical}
+  - {id: humidity_pct,  type: between, column: humidity_pct, min: 0, max: 100, severity: critical}
+  - {id: temp_present,  type: not_null, column: temperature_c, mostly: 0.98, severity: warning}
+  - {id: fresh_data,    type: freshness, column: fetched_at, max_age_hours: 26, severity: warning}

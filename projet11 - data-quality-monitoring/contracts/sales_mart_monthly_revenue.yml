@@ -1,0 +1,11 @@
+dataset: mart_monthly_revenue
+owner: finance-analytics
+source:
+  type: duckdb
+  path: ../projet5 - dbt-sales-warehouse/warehouse.duckdb
+  table: main_marts.mart_monthly_revenue
+checks:
+  - {id: grain_unique,    type: unique_combination, columns: [month, category], severity: critical}
+  - {id: revenue_positive, type: between, column: revenue, min: 0, severity: critical}
+  - {id: aov_range,       type: between, column: avg_order_value, min: 1, max: 50000, severity: warning}
+  - {id: category_known,  type: in_set,  column: category, values: [Motors, Hydraulics, Bearings, Fasteners], severity: critical}

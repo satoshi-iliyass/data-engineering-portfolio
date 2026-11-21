@@ -1,0 +1,19 @@
+# Data contract: what consumers (finance dashboards) can rely on in the order-lines fact table.
+dataset: fct_order_items
+owner: data-engineering
+source:
+  type: duckdb
+  path: ../projet5 - dbt-sales-warehouse/warehouse.duckdb
+  table: main_marts.fct_order_items
+volume_anomaly: true            # alert if the row count jumps / drops vs. previous runs
+checks:
+  - {id: pk_not_null,     type: not_null,  column: order_item_id,  severity: critical}
+  - {id: pk_unique,       type: unique,    column: order_item_id,  severity: critical}
+  - {id: qty_range,       type: between,   column: quantity, min: 1, max: 100, severity: critical}
+  - {id: amount_positive, type: between,   column: line_amount, min: 0, severity: critical}
+  - {id: status_known,    type: in_set,    column: status, values: [completed, shipped, returned, cancelled], severity: critical}
+  - {id: fk_customer,     type: foreign_key, column: customer_id, ref: main_marts.dim_customers.customer_id, severity: critical}
+  - {id: fk_product,      type: foreign_key, column: product_id,  ref: main_marts.dim_products.product_id,  severity: critical}
+  - {id: discount_le_list, type: pair_greater_or_equal, column_a: list_price, column_b: unit_price, severity: warning}
+  - {id: rows_expected,   type: row_count_between, min: 1000, max: 1000000, severity: critical}
+  - {id: avg_basket_sane, type: mean_between, column: quantity, min: 1, max: 6, severity: warning}
