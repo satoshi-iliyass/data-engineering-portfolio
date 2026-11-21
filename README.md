@@ -11,6 +11,7 @@ End-to-end projects covering what clients most often need: collecting data (scra
 | 5 | [Sales Data Warehouse](projet5%20-%20dbt-sales-warehouse) | Staging → star schema → KPI mart, fully tested | dbt, DuckDB, SQL | 29/29 dbt tests pass, revenue reconciles |
 | 6 | [Pipeline Orchestration](projet6%20-%20pipeline-orchestration) | Scheduled platform: retries, dependencies, data-freshness SLA, Slack alerts, CI | Prefect 3, GitHub Actions, pytest | 3 pipelines orchestrated, failures retried/alerted, 6 tests |
 | 7 | [AWS Serverless Data Lake](projet7%20-%20aws-serverless-data-lake) | S3 → Lambda → partitioned Parquet + Glue catalog, SQL on S3, IaC, least-privilege IAM | AWS S3, Lambda, Glue, IAM, pyarrow, DuckDB, moto | 4,966 rows, 1.9 % quarantined, corrections applied, 15 tests |
+| 8 | [PostgreSQL CDC Pipeline](projet8%20-%20postgres-cdc-pipeline) | Log-based CDC from the WAL (like Debezium), SCD2, exactly-once, row-by-row reconciliation | PostgreSQL 17 logical decoding, psycopg 3, SQL | 1,890 events, 0 drift vs 3.6 % revenue error with updated_at loads, 6 tests |
 | 11 | [Data Quality Monitoring](projet11%20-%20data-quality-monitoring) | YAML data contracts → Great Expectations, volume anomaly, freshness, CI quality gate after dbt | Great Expectations, DuckDB, YAML, GitHub Actions | 28/28 on clean data; 6/6 injected defects caught, pipeline blocked, 14 tests |
 
 ## Common engineering principles
