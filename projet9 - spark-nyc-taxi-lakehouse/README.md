@@ -19,8 +19,8 @@ Typical client request: *"Our pandas scripts died when the data reached millions
 | Rows ingested (bronze) | **9,554,778** |
 | Clean rows (silver) | **9,203,598** in 91 daily partitions |
 | Rejected to quarantine | **351,179 (3.68 %)**, each with its reason |
-| Total pipeline time | **~63 s** (bronze 11.5 s · silver 45.7 s · gold 5.9 s) |
-| One-day query | 74,717 trips in **0.5 s** thanks to partition pruning (only that day's files are read) |
+| Total pipeline time | **~60–85 s** depending on the runner (last run: bronze 10.8 s · silver 43.4 s · gold 5.7 s) |
+| Queries on silver | revenue for one day: 0.5 s (reads 1 of 91 day folders) · all 91 days: 0.6 s. At 9 M rows Spark's fixed overhead dominates; the daily layout pays off as history grows to years |
 | Zone join | executed as **BroadcastHashJoin** (the 9.5 M-row table is never shuffled for it) |
 
 **Rejection reasons** (rules are explicit, so they can be discussed with the client): distance out of range 213,413 · negative fare 126,030 · trip longer than 6 h 5,434 · speed above 100 mph 2,841 · drop-off before pick-up 2,801 · non-positive total 639 · pick-up outside the loaded period 21.
