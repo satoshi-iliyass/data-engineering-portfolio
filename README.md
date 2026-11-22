@@ -13,6 +13,7 @@ End-to-end projects covering what clients most often need: collecting data (scra
 | 7 | [AWS Serverless Data Lake](projet7%20-%20aws-serverless-data-lake) | S3 → Lambda → partitioned Parquet + Glue catalog, SQL on S3, IaC, least-privilege IAM | AWS S3, Lambda, Glue, IAM, pyarrow, DuckDB, moto | 4,966 rows, 1.9 % quarantined, corrections applied, replay changes nothing, 35 tests |
 | 8 | [PostgreSQL CDC Pipeline](projet8%20-%20postgres-cdc-pipeline) | Log-based CDC from the WAL (like Debezium), SCD2, exactly-once, row-by-row reconciliation | PostgreSQL 17 logical decoding, psycopg 3, SQL | 1,890 events, 0 drift vs 3.5 % revenue error with updated_at loads, 35 tests |
 | 9 | [Spark Lakehouse](projet9%20-%20spark-nyc-taxi-lakehouse) | Bronze/silver/gold on 9.5 M real NYC taxi trips: schema drift, quarantine, broadcast join | PySpark 4, Parquet, GitHub Actions | 9.55 M rows in ~1 min, 3.68 % quarantined with reason, 13 tests |
+| 10 | [Kafka Streaming Counter](projet10%20-%20kafka-streaming) | Live counting that survives crashes: dedupe, atomic writes, reject bin, safe restart | Apache Kafka, Python, SQLite, GitHub Actions | Killed at each of 24 messages on a real broker: same totals, 205 tests |
 | 11 | [Data Quality Monitoring](projet11%20-%20data-quality-monitoring) | YAML data contracts → Great Expectations, volume anomaly, freshness, CI quality gate after dbt | Great Expectations, DuckDB, YAML, GitHub Actions | 28/28 on clean data; 6/6 injected defects caught, pipeline blocked, 14 tests |
 
 ## Common engineering principles
