@@ -18,9 +18,9 @@ Typical client request: *"Our app exports JSON files to S3 every day. We want cl
 | Serverless, event-driven | S3 `ObjectCreated` → Lambda, no server to maintain, pay per file |
 | Columnar + partitioned | Snappy Parquet in `dt=` folders: queries scan only the days they need |
 | Catalog | Partitions added to Glue at write time (no slow crawler / `MSCK REPAIR`) |
-| Idempotent | Output keys derived from the source file: replaying an event overwrites, never duplicates |
-| Late corrections | Orders re-sent in a later file replace the old version (`ROW_NUMBER()` view) |
-| Quarantine, not crash | Bad JSON, missing id, negative quantity, unknown currency, bad date → quarantine file with reason |
+| Idempotent | Output keys derived from the full source path; a replay rewrites its own files, removes the ones it no longer produces, and changes no value |
+| Late corrections | The file that **arrived** last wins (`ROW_NUMBER()` on arrival time), so replaying an old file never cancels a correction |
+| Quarantine, not crash | Bad JSON, missing id, negative or decimal quantity, infinite price, unknown currency, bad date → quarantine file with reason |
 | Security | Buckets encrypted (SSE), public access blocked, least-privilege IAM role for the Lambda |
 | Cost | Raw files move to Infrequent Access after 30 days, Glacier after 90 |
 | Infrastructure as code | `src/infra.py` (boto3) creates buckets, Glue DB/table, IAM role, Lambda, trigger — re-runnable |
@@ -40,13 +40,17 @@ Deploy to real AWS (credentials configured): `python -m src.infra`, then upload 
 
 ## Verified result (local mock, 2026-11-21)
 
-- **15 files** ingested (14 daily exports, some gzipped, + 1 corrections file) in **4.9 s**
+- **15 files** ingested (14 daily exports, some gzipped, + 1 corrections file) in **5.4 s**
 - **4,966 rows** received → **93 quarantined (1.87 %)** with reason, 26 Parquet objects, 14 Glue partitions
 - **40 corrected orders** applied: 4,859 Parquet rows → **4,819 unique orders**, no double counting
-- Replaying a file: **4,819 orders before, 4,819 after** (idempotent)
+- Replaying a file: 4,819 orders before, 4,819 after, **every value identical**
 - KPIs by SQL straight on S3: daily revenue, revenue by country (EUR after FX), top products
 
-**15 tests**: validation rules (6 cases), currency conversion, partitioning + typing + quarantine, Glue partitions registered once, idempotent replay that also clears an old quarantine, duplicate lines, ignored prefixes, infra security + re-run, and an end-to-end test over a real HTTP S3 endpoint with SQL and corrections.
+**35 tests**: validation rules, currency conversion, partitioning + typing + quarantine, Glue partitions registered once, idempotent replay that also clears an old quarantine, duplicate lines, ignored prefixes, infra security + re-run, and an end-to-end test over a real HTTP S3 endpoint with SQL and corrections.
+
+## Limits
+
+Verified on a local AWS mock (moto). Not yet deployed on a real AWS account: the Lambda runtime, the pyarrow layer ARN and Athena itself are untested.
 
 ## Stack
 

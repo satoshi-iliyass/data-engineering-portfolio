@@ -18,20 +18,37 @@ def setup_logging():
                                   logging.StreamHandler(sys.stdout)])
 
 
+def flatten_all(payloads: dict, fetched_at: str) -> tuple[list[dict], list[str]]:
+    """One city with an unreadable answer must not lose the other cities."""
+    rows, failed = [], []
+    for city, payload in payloads.items():
+        try:
+            rows.extend(transform.flatten(city, payload, fetched_at))
+        except (KeyError, TypeError) as err:
+            log.error("%s: unreadable answer: %r", city, err)
+            failed.append(city)
+    if not rows:
+        raise RuntimeError("no usable rows")
+    return rows, failed
+
+
 def run() -> int:
     conn = load.connect(config.DB_PATH)
     fetched_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     try:
         payloads = extract.extract_all()
-        rows = [r for city, p in payloads.items() for r in transform.flatten(city, p, fetched_at)]
+        rows, unreadable = flatten_all(payloads, fetched_at)
+        missing = sorted(set(config.CITIES) - set(payloads)) + unreadable
         good, bad = quality.split(rows)
         if bad:
             load.quarantine(conn, bad)
             log.warning("%d rows quarantined", len(bad))
         inserted, updated = load.upsert(conn, good)
-        load.log_run(conn, "success", inserted, updated, len(bad))
-        log.info("SUCCESS inserted=%d updated=%d rejected=%d", inserted, updated, len(bad))
-        return 0
+        status = "partial" if missing else "success"
+        message = "missing cities: " + ", ".join(missing) if missing else ""
+        load.log_run(conn, status, inserted, updated, len(bad), message)
+        log.info("%s inserted=%d updated=%d rejected=%d %s", status.upper(), inserted, updated, len(bad), message)
+        return 2 if missing else 0              # 2 = data stored, but not for every city
     except Exception as err:
         load.log_run(conn, "failed", message=str(err))
         log.exception("FAILED: %s", err)

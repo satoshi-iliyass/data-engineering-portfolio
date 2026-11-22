@@ -53,9 +53,10 @@ def main() -> None:
         print(f"ingested {len(files)} files in {ingest_s:.1f}s")
 
         con = query.connect()
-        before = con.sql("SELECT COUNT(*) FROM orders_latest").fetchall()[0][0]
+        everything = "SELECT order_id, quantity, amount_eur, dt FROM orders_latest ORDER BY order_id"
+        before = con.sql(everything).fetchall()
         handler.lambda_handler(s3_event(config.RAW_BUCKET, config.INCOMING_PREFIX + files[0][0]))  # replay
-        after = con.sql("SELECT COUNT(*) FROM orders_latest").fetchall()[0][0]
+        after = con.sql(everything).fetchall()
         raw_rows = con.sql(f"SELECT COUNT(*) FROM read_parquet('s3://{config.LAKE_BUCKET}/"
                            f"{config.CURATED_PREFIX}*/*.parquet')").fetchall()[0][0]
 
@@ -69,8 +70,9 @@ def main() -> None:
                  f"- Files ingested: **{q['files']}** ({len(objs)} Parquet objects, {len(parts)} Glue partitions)",
                  f"- Rows received: **{q['rows_in']}**, rejected to quarantine: **{q['rows_rejected']}** "
                  f"({q['reject_rate_pct']} %)",
-                 f"- Parquet rows: {raw_rows}; unique orders after corrections: **{after}**",
-                 f"- Idempotency: replaying a file -> {before} orders before, {after} after",
+                 f"- Parquet rows: {raw_rows}; unique orders after corrections: **{len(after)}**",
+                 f"- Idempotency: replaying a file -> {len(before)} orders before, {len(after)} after, "
+                 f"same values: {before == after}",
                  f"- Ingestion time: {ingest_s:.1f} s", ""]
         for name, res in kpis.items():
             lines += [f"## {name}", "", "| " + " | ".join(res["columns"]) + " |",

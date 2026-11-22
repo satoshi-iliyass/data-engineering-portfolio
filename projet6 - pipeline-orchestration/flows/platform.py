@@ -17,6 +17,9 @@ from .tasks import check_freshness, run_job, send_alert, write_summary
 def daily_platform(only: list[str] | None = None, jobs: dict | None = None) -> dict:
     log = get_run_logger()
     jobs = jobs or config.JOBS
+    unknown = set(only or []) - set(jobs)
+    if unknown:
+        raise ValueError(f"unknown job(s): {sorted(unknown)}; known: {sorted(jobs)}")
     selected = {k: v for k, v in jobs.items() if not only or k in only}
 
     # 1. independent jobs run in parallel; a dependent job waits for its upstream job
@@ -40,7 +43,7 @@ def daily_platform(only: list[str] | None = None, jobs: dict | None = None) -> d
 
     # 3. one alert listing every problem, then the run report
     problems = [f"{r['job']} {r['status']}: {r.get('error', '')[:200]}" for r in results if r["status"] != "success"]
-    problems += [f"{f['job']} STALE: {f['age_h']} h old (SLA {f['max_age_h']} h)"
+    problems += [f"{f['job']} STALE: " + (f.get("error") or f"{f['age_h']} h old (SLA {f['max_age_h']} h)")
                  for f in freshness if f["fresh"] is False]
     if problems:
         send_alert("daily-data-platform problems:\n" + "\n".join(problems))

@@ -19,8 +19,10 @@ Same source, same 6 hours of activity (720 new orders, 1,020 updates, **90 hard 
 
 | Method | Source rows | Target rows | Ghost rows (deleted in source) | Source revenue | Target revenue | Match |
 |---|---|---|---|---|---|---|
-| **CDC (WAL)** | 1,630 | 1,630 | **0** | 739,685.60 | 739,685.60 | **YES** |
-| Watermark `updated_at` | 1,630 | 1,691 | **61** | 739,685.60 | 766,479.47 | NO — revenue overstated by **3.6 %** |
+| **CDC (WAL)** | 1,630 | 1,630 | **0** | 742,300.68 | 742,300.68 | **YES** |
+| Watermark `updated_at` | 1,630 | 1,695 | **65** | 742,300.68 | 768,277.95 | NO — revenue overstated by **3.5 %** |
+
+Customers are reconciled too, on every column: 200 rows, 0 different.
 
 The watermark method cannot see a row that no longer exists, so every hard delete stays in the report forever.
 
@@ -29,7 +31,9 @@ The watermark method cannot see a row that no longer exists, so every hard delet
 | Feature | How |
 |---|---|
 | No missed change | Slot created **before** the initial snapshot: nothing committed in between can be lost |
-| Deletes captured | WAL contains DELETEs; target keeps them as `_deleted = true` (history preserved) |
+| Deletes captured | DELETE, TRUNCATE and primary-key changes; target keeps deleted rows as `_deleted = true` |
+| Long values | Unchanged long (TOAST) values, which PostgreSQL does not re-send, are kept as they are |
+| Nothing ignored | A change on a tracked table that cannot be read stops the sync instead of being skipped |
 | Exactly-once effect | Target batch committed in one transaction with its offset; slot advanced only afterwards. Crash test: 315 events re-read after restart, **0 re-applied** |
 | Ordering guard | Each row stores the WAL position (`_lsn`) of its last change; older events can never overwrite newer data |
 | Only committed data | Rolled-back transactions never appear in the WAL stream |
@@ -38,7 +42,7 @@ The watermark method cannot see a row that no longer exists, so every hard delet
 | Monitoring | `pending_changes()` = replication lag in number of changes |
 | Low impact on production | No queries scanning the big tables; reads the log the database writes anyway |
 
-Throughput on a laptop: **~1,150 events/s** (batched, single worker).
+Throughput on a laptop: roughly **1,000–1,300 events/s** (batched, single worker, small demo).
 
 ## Run
 
@@ -50,8 +54,12 @@ python -m src.run_demo        # builds both databases, 6 simulated hours, crash 
 python -m pytest -q
 ```
 
-**6 integration tests on a real PostgreSQL**: parser (quotes, NULLs, types), insert/update/delete replicated, crash between commit and acknowledgement → no duplicates, rolled-back transactions ignored, SCD2 versions only on tracked changes, watermark misses deletes while CDC does not.
+**35 integration tests on a real PostgreSQL**: parser (quotes, NULLs, types), insert/update/delete replicated, crash between commit and acknowledgement → no duplicates, rolled-back transactions ignored, SCD2 versions only on tracked changes, watermark misses deletes while CDC does not.
 **CI**: GitHub Actions starts PostgreSQL 17 with `wal_level=logical` and runs the tests on every push.
+
+## Limits
+
+One worker. New columns or tables must be added by hand. A primary-key change on a row holding an unchanged long value stops the sync (needs `REPLICA IDENTITY FULL`). Uses `test_decoding` (text); a production setup would normally use Debezium / `pgoutput`.
 
 ## Stack
 

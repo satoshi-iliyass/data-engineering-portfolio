@@ -41,7 +41,7 @@ def read_parquet(s3, key):
 @pytest.mark.parametrize("change,reason", [
     ({"order_id": None}, "missing order_id"), ({"quantity": -1}, "quantity out of range"),
     ({"currency": "XYZ"}, "unknown currency"), ({"created_at": "31/02/2026"}, "bad field"),
-    ({"unit_price": "N/A"}, "bad field"), ({"unit_price": -3}, "negative price"),
+    ({"unit_price": "N/A"}, "bad field"), ({"unit_price": -3}, "negative or infinite price"),
 ])
 def test_validation_rejects_with_reason(change, reason):
     row, why = handler.validate({**GOOD, **change})
@@ -60,9 +60,9 @@ def test_file_is_partitioned_typed_and_bad_rows_quarantined(aws):
     res = put(aws, "orders_x.jsonl.gz", rows, gz=True)["results"][0]
     assert (res["rows_in"], res["rows_ok"], res["rows_rejected"]) == (4, 2, 2)
     assert res["partitions"] == ["2026-11-19", "2026-11-20"]
-    day = read_parquet(aws, f"{config.CURATED_PREFIX}dt=2026-11-20/orders_x.parquet")
+    day = read_parquet(aws, f"{config.CURATED_PREFIX}dt=2026-11-20/orders_x.jsonl.gz.parquet")
     assert [r["order_id"] for r in day] == ["O1"] and day[0]["amount_eur"] == 50.0
-    q = aws.get_object(Bucket=config.LAKE_BUCKET, Key=f"{config.QUARANTINE_PREFIX}orders_x.jsonl")["Body"].read()
+    q = aws.get_object(Bucket=config.LAKE_BUCKET, Key=f"{config.QUARANTINE_PREFIX}orders_x.jsonl.gz.jsonl")["Body"].read()
     reasons = [json.loads(line)["reason"] for line in q.decode().splitlines()]
     assert reasons == ["quantity out of range: 0", "invalid JSON"]
 

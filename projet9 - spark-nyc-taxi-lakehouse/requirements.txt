@@ -1,2 +1,2 @@
-pyspark>=4.0
-pytest>=8.0
+pyspark==4.3.0
+pytest==9.2.0

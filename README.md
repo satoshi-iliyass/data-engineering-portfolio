@@ -4,15 +4,15 @@ End-to-end projects covering what clients most often need: collecting data (scra
 
 | # | Project | What it shows | Stack | Verified result |
 |---|---|---|---|---|
-| 1 | [Price Tracker Pipeline](projet1%20-%20price-tracker-pipeline) | Daily web scraping → SQL history → Excel report | Python, requests, BeautifulSoup, SQLite, openpyxl | 1,000 products/run, idempotent re-runs, 9 tests |
-| 2 | [Weather API Pipeline](projet2%20-%20weather-api-pipeline) | Incremental REST-API ingestion, quarantine of bad rows | Python, REST API, SQLite, SQL views | 600 rows, re-run = 0 duplicates, 5 tests |
-| 3 | [Excel Automation](projet3%20-%20excel-automation) | Merge & clean dozens of inconsistent Excel files into one report | pandas, openpyxl | 9 files → 549 clean rows, 18 rejected with reason, 10 tests |
+| 1 | [Price Tracker Pipeline](projet1%20-%20price-tracker-pipeline) | Daily web scraping → SQL history → Excel report | Python, requests, BeautifulSoup, SQLite, openpyxl | 1,000 products/run, idempotent re-runs, 57 tests |
+| 2 | [Weather API Pipeline](projet2%20-%20weather-api-pipeline) | Incremental REST-API ingestion, quarantine of bad rows | Python, REST API, SQLite, SQL views | 600 rows, re-run = 0 duplicates, 43 tests |
+| 3 | [Excel Automation](projet3%20-%20excel-automation) | Merge & clean dozens of inconsistent Excel files into one report | pandas, openpyxl | 9 files → 549 clean rows, 45 set aside with reason, 44 tests |
 | 4 | [Sensor Analytics](projet4%20-%20sensor-analytics-duckdb) | 10 M rows on a laptop, Parquet, anomaly & wear detection | DuckDB, Parquet, SQL | CSV 387 MB → Parquet 23 MB, queries ~11× faster |
 | 5 | [Sales Data Warehouse](projet5%20-%20dbt-sales-warehouse) | Staging → star schema → KPI mart, fully tested | dbt, DuckDB, SQL | 29/29 dbt tests pass, revenue reconciles |
-| 6 | [Pipeline Orchestration](projet6%20-%20pipeline-orchestration) | Scheduled platform: retries, dependencies, data-freshness SLA, Slack alerts, CI | Prefect 3, GitHub Actions, pytest | 3 pipelines orchestrated, failures retried/alerted, 6 tests |
-| 7 | [AWS Serverless Data Lake](projet7%20-%20aws-serverless-data-lake) | S3 → Lambda → partitioned Parquet + Glue catalog, SQL on S3, IaC, least-privilege IAM | AWS S3, Lambda, Glue, IAM, pyarrow, DuckDB, moto | 4,966 rows, 1.9 % quarantined, corrections applied, 15 tests |
-| 8 | [PostgreSQL CDC Pipeline](projet8%20-%20postgres-cdc-pipeline) | Log-based CDC from the WAL (like Debezium), SCD2, exactly-once, row-by-row reconciliation | PostgreSQL 17 logical decoding, psycopg 3, SQL | 1,890 events, 0 drift vs 3.6 % revenue error with updated_at loads, 6 tests |
-| 9 | [Spark Lakehouse](projet9%20-%20spark-nyc-taxi-lakehouse) | Bronze/silver/gold on 9.5 M real NYC taxi trips: schema drift, quarantine, broadcast join, partition pruning | PySpark 4, Parquet, GitHub Actions | 9.55 M rows in ~1 min, 3.68 % quarantined with reason, 13 tests |
+| 6 | [Pipeline Orchestration](projet6%20-%20pipeline-orchestration) | Scheduled platform: retries, dependencies, data-freshness SLA, Slack alerts, CI | Prefect 3, GitHub Actions, pytest | 3 pipelines orchestrated, failures retried/alerted, 13 tests |
+| 7 | [AWS Serverless Data Lake](projet7%20-%20aws-serverless-data-lake) | S3 → Lambda → partitioned Parquet + Glue catalog, SQL on S3, IaC, least-privilege IAM | AWS S3, Lambda, Glue, IAM, pyarrow, DuckDB, moto | 4,966 rows, 1.9 % quarantined, corrections applied, replay changes nothing, 35 tests |
+| 8 | [PostgreSQL CDC Pipeline](projet8%20-%20postgres-cdc-pipeline) | Log-based CDC from the WAL (like Debezium), SCD2, exactly-once, row-by-row reconciliation | PostgreSQL 17 logical decoding, psycopg 3, SQL | 1,890 events, 0 drift vs 3.5 % revenue error with updated_at loads, 35 tests |
+| 9 | [Spark Lakehouse](projet9%20-%20spark-nyc-taxi-lakehouse) | Bronze/silver/gold on 9.5 M real NYC taxi trips: schema drift, quarantine, broadcast join | PySpark 4, Parquet, GitHub Actions | 9.55 M rows in ~1 min, 3.68 % quarantined with reason, 13 tests |
 | 11 | [Data Quality Monitoring](projet11%20-%20data-quality-monitoring) | YAML data contracts → Great Expectations, volume anomaly, freshness, CI quality gate after dbt | Great Expectations, DuckDB, YAML, GitHub Actions | 28/28 on clean data; 6/6 injected defects caught, pipeline blocked, 14 tests |
 
 ## Common engineering principles

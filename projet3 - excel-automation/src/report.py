@@ -1,4 +1,4 @@
-﻿"""Write the consolidated Excel report: data, pivots, chart, data-quality log."""
+"""Write the consolidated Excel report: data, pivots, chart, data-quality log."""
 from pathlib import Path
 
 import pandas as pd

@@ -55,7 +55,7 @@ def tgt(sql, params=()):
 def test_parser_handles_quotes_nulls_and_types():
     c = cdc.parse_change("0/1", 7, 0, "table public.customers: UPDATE: id[integer]:3 name[text]:'O''Brien' "
                                       "email[text]:null segment[text]:'gold' updated_at[timestamp with time zone]:"
-                                      "'2026-11-22 00:00:00+01'")
+                                      "'2026-11-22 00:00:00+01'")[0]
     assert c.table == "customers" and c.op == "UPDATE"
     assert c.cols["name"] == ("text", "O'Brien") and c.cols["email"] == ("text", None)
     assert c.cols["updated_at"][0] == "timestamp with time zone"

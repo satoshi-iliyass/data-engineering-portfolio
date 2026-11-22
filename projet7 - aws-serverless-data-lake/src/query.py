@@ -15,10 +15,11 @@ from . import config
 ORDERS_LATEST = f"""
 CREATE OR REPLACE VIEW orders_latest AS
 SELECT * EXCLUDE (rn) FROM (
-    SELECT *, ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY processed_at DESC, source_file DESC) AS rn
+    SELECT *, ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY received_at DESC, source_file DESC) AS rn
     FROM read_parquet('s3://{config.LAKE_BUCKET}/{config.CURATED_PREFIX}*/*.parquet', hive_partitioning = true)
 ) WHERE rn = 1
-"""   # an order re-sent in a later file (correction) replaces the old version: no double counting
+"""   # an order re-sent in a later file (correction) replaces the old version: no double counting.
+# 'Latest' = when the source file ARRIVED, not when we processed it: replaying an old file changes nothing.
 
 KPIS = {
     "daily_revenue": """SELECT dt, COUNT(*) AS orders, ROUND(SUM(amount_eur), 2) AS revenue_eur

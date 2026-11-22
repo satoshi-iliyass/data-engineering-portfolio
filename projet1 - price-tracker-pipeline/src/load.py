@@ -54,3 +54,7 @@ def log_run(conn: sqlite3.Connection, run_date: str, status: str, rows: int, mes
     with conn:
         conn.execute("INSERT INTO runs (run_date, status, rows, message) VALUES (?, ?, ?, ?)",
                      (run_date, status, rows, message))
+
+
+def count_day(conn: sqlite3.Connection, day: str) -> int:
+    return conn.execute("SELECT COUNT(*) FROM prices WHERE scraped_on = ?", (day,)).fetchone()[0]

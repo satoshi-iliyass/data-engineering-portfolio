@@ -47,9 +47,9 @@ Real run on the three pipelines (laptop, 2026-11-21):
 |---|---|---|---|
 | weather_api | success | 3.5 s | inserted=0 updated=600 rejected=0 (idempotent re-run) |
 | price_tracker | success | 42.8 s | 1,000 rows loaded + Excel report |
-| excel_consolidation | success | 3.6 s | 9 files → 549 clean rows, 18 rejected |
+| excel_consolidation | success | 3.6 s | 9 files → 549 clean rows, 45 set aside with reason |
 
-**6 tests** (fake jobs, no network, ~25 s): all-success report, transient failure retried then OK, permanent failure → alert + downstream skipped + other jobs still run, timeout, freshness SLA, "silent success" caught as stale.
+**13 tests** (fake jobs, no network, ~40 s), including a freshness check that cannot run and Slack being down: all-success report, transient failure retried then OK, permanent failure → alert + downstream skipped + other jobs still run, timeout, freshness SLA, "silent success" caught as stale.
 
 **CI**: GitHub Actions (`.github/workflows/ci.yml` at the repo root) runs the tests of every project and `dbt build` on each push.
 

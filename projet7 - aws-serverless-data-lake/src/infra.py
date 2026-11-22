@@ -87,8 +87,10 @@ def deploy(with_lambda: bool = True) -> dict:
     iam.put_role_policy(RoleName="shop-ingest-lambda", PolicyName="ingest", PolicyDocument=json.dumps({
         "Version": "2012-10-17", "Statement": [
             {"Effect": "Allow", "Action": "s3:GetObject", "Resource": f"arn:aws:s3:::{config.RAW_BUCKET}/*"},
-            {"Effect": "Allow", "Action": ["s3:PutObject", "s3:DeleteObject"],
+            {"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
              "Resource": f"arn:aws:s3:::{config.LAKE_BUCKET}/*"},
+            # without ListBucket, S3 answers 403 instead of 'not found' for a missing manifest
+            {"Effect": "Allow", "Action": "s3:ListBucket", "Resource": f"arn:aws:s3:::{config.LAKE_BUCKET}"},
             {"Effect": "Allow", "Action": ["glue:CreatePartition", "glue:GetTable"], "Resource": "*"},
             {"Effect": "Allow", "Action": ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"],
              "Resource": "*"}]}))

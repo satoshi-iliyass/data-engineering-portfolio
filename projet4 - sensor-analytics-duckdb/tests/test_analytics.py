@@ -1,4 +1,4 @@
-﻿"""Runs the real generate -> convert -> analytics chain on a smaller dataset (~6.5 days) in a temp folder."""
+"""Runs the real generate -> convert -> analytics chain on a smaller dataset (~6.5 days) in a temp folder."""
 import duckdb
 
 from src import analytics, convert, generate

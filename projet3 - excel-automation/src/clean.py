@@ -1,6 +1,8 @@
 """Read any number of messy Excel files and return ONE clean, standardised table."""
 import logging
+import math
 import re
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -28,8 +30,8 @@ def find_header_row(raw: pd.DataFrame) -> int:
 
 
 def parse_date(value) -> pd.Timestamp:
-    if isinstance(value, pd.Timestamp):
-        return value
+    if isinstance(value, datetime):          # a real Excel date cell (pd.Timestamp is a datetime too)
+        return pd.Timestamp(value)
     s = str(value).strip()
     for fmt in DATE_FORMATS:
         try:
@@ -39,20 +41,30 @@ def parse_date(value) -> pd.Timestamp:
     return pd.NaT
 
 
+def is_ambiguous(text: str) -> bool:
+    """'1,299' or '1.299': thousand or decimal? We cannot know, so we do not guess."""
+    return re.fullmatch(r"-?\d{1,3}[.,]\d{3}", text) is not None
+
+
 def to_number(value) -> float:
-    """'320,15' / '320.15' / 320.15 -> 320.15"""
-    if value is None or (isinstance(value, float) and pd.isna(value)):
-        return float("nan")
-    s = str(value).strip().replace(" ", "").replace(",", ".")
+    """'320,15' / '320.15' / 320.15 -> 320.15; anything doubtful -> NaN (the row is then rejected)."""
+    if isinstance(value, str):
+        text = value.strip().replace(" ", "").replace("\u00a0", "").replace("\u202f", "")
+        if is_ambiguous(text):
+            return float("nan")
+        value = text.replace(",", ".")
     try:
-        return float(s)
-    except ValueError:
+        number = float(value)
+    except (TypeError, ValueError):
         return float("nan")
+    return number if math.isfinite(number) else float("nan")
 
 
 def normalise_product(name) -> str:
-    s = re.sub(r"\s+", " ", str(name)).strip()
-    return s.title().replace("6204", "6204")
+    """Missing name -> '' (the row is then rejected)."""
+    if pd.isna(name):
+        return ""
+    return re.sub(r"\s+", " ", str(name)).strip().title()
 
 
 def read_one(path: Path) -> pd.DataFrame:
@@ -69,25 +81,37 @@ def read_one(path: Path) -> pd.DataFrame:
     return df
 
 
-def clean(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Return (clean rows, rejected rows with reason)."""
+def standardise(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop blank lines and TOTAL footers, give every column its type."""
     df = df.dropna(how="all", subset=STANDARD).copy()
-    df = df[~df["date"].astype(str).str.upper().str.startswith("TOTAL")]          # footer rows
+    df = df[~df["date"].astype(str).str.upper().str.startswith("TOTAL")].copy()
     df["date"] = df["date"].map(parse_date)
     df["product"] = df["product"].map(normalise_product)
     df["quantity"] = df["quantity"].map(to_number)
     df["unit_price"] = df["unit_price"].map(to_number)
+    return df
 
+
+def reject_reasons(df: pd.DataFrame) -> pd.Series:
+    """'' = the row is good. A line identical to a previous one is set aside, never deleted in silence."""
     reason = pd.Series("", index=df.index)
     reason[df["date"].isna()] += "bad date; "
-    reason[df["quantity"].isna() | (df["quantity"] <= 0)] += "bad quantity; "
-    reason[df["unit_price"].isna() | (df["unit_price"] <= 0)] += "bad price; "
+    reason[df["product"] == ""] += "missing product; "
+    reason[~((df["quantity"] > 0) & (df["quantity"] % 1 == 0))] += "bad quantity; "
+    reason[~(df["unit_price"] > 0)] += "bad price; "
+    key = ["branch", "date", "product", "quantity", "unit_price"]
+    reason[(reason == "") & df.duplicated(subset=key)] += "duplicate line; "
+    return reason
+
+
+def clean(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Return (clean rows, rejected rows with reason)."""
+    df = standardise(df)
+    reason = reject_reasons(df)
     rejected = df[reason != ""].assign(reason=reason[reason != ""])
     good = df[reason == ""].copy()
-
-    before = len(good)
-    good = good.drop_duplicates(subset=["branch", "date", "product", "quantity", "unit_price"])
-    log.info("removed %d duplicate rows", before - len(good))
+    if good.empty:
+        raise RuntimeError(f"no valid rows ({len(rejected)} rejected)")
     good["quantity"] = good["quantity"].astype(int)
     good["revenue"] = (good["quantity"] * good["unit_price"]).round(2)
     good["month"] = good["date"].dt.to_period("M").astype(str)

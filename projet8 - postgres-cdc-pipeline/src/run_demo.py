@@ -58,9 +58,9 @@ def main(rounds: int = 6, seed: int = 42) -> dict:
         example = tgt.execute("SELECT id, segment, email, valid_from::timestamp(0), valid_to::timestamp(0), is_current "
                               "FROM core.customers_history WHERE id = (SELECT id FROM core.customers_history "
                               "GROUP BY id ORDER BY count(*) DESC, id LIMIT 1) ORDER BY valid_from").fetchall()
-    rc, rw = reconcile.cdc(), reconcile.watermark()
+    rc, rw, cust = reconcile.cdc(), reconcile.watermark(), reconcile.customers()
     res = {"snapshot": snap, "activity": activity, "events": events, "scd": scd, "soft_deleted": soft_deleted,
-           "cdc": rc, "watermark": rw, "crash_replay": crash_recovered, "sync_seconds": round(t_sync, 2)}
+           "cdc": rc, "watermark": rw, "customers": cust, "crash_replay": crash_recovered, "sync_seconds": round(t_sync, 2)}
 
     lines = ["# CDC run report (PostgreSQL 17, logical decoding)", "",
              f"- Snapshot: {snap['customers']} customers, {snap['orders']} orders (slot created at LSN {snap['slot_lsn']})",
@@ -79,6 +79,8 @@ def main(rounds: int = 6, seed: int = 42) -> dict:
         lines.append(f"| {name} | {r['source_rows']} | {r['target_rows']} | {r['missing']} | {r['ghost_rows']} | "
                      f"{r['different']} | {r['source_revenue']:,.2f} | {r['target_revenue']:,.2f} | "
                      f"{'YES' if r['match'] else 'NO'} |")
+    lines += ["", f"Customers (every column): {cust['source_rows']} rows in the source, {cust['different']} different, "
+              f"match: {'YES' if cust['match'] else 'NO'}"]
     lines += ["", "## Example customer history (SCD type 2)", "",
               "| id | segment | email | valid_from | valid_to | is_current |", "|---|---|---|---|---|---|"]
     lines += ["| " + " | ".join("" if v is None else str(v) for v in row) + " |" for row in example]

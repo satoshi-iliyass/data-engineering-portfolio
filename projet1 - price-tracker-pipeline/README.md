@@ -22,14 +22,16 @@ Typical business use: competitor price monitoring, stock tracking, catalogue mon
 
 | Feature | How |
 |---|---|
-| **Reliable extraction** | Retries with exponential backoff, timeouts, polite delay between requests |
+| **Reliable extraction** | Retries on temporary failures only (a 404 is not retried), timeouts, polite delay between requests |
 | **Raw zone** | Every page saved untouched per date → any day can be rebuilt without re-scraping (`--from-raw`) |
 | **Idempotent loads** | `UPSERT` on `(product_id, scraped_on)` → re-running a day never duplicates data |
 | **Price history** | One row per product per day; price changes computed with SQL window functions (`LAG`) |
 | **Data quality gate** | Minimum row count, price range, duplicate keys, empty fields, valid ratings — bad data is blocked before loading |
+| **Fault isolation** | Each step loads its own part: a broken report never loses the data (`--report` rebuilds it alone) |
+| **No guessing** | A price that is not exactly like `£51.77` is refused, not interpreted |
 | **Observability** | Log file + a `runs` table (date, status, rows, error message) |
 | **Business output** | Formatted Excel report: summary, today's prices, price changes vs previous run |
-| **Tested** | Unit tests for parsing, quality checks and idempotency (`pytest`) |
+| **Tested** | 57 tests: every function, plus the assembly with one broken part at a time |
 
 ## Quick start
 
@@ -75,6 +77,7 @@ Only `src/transform.py` (HTML selectors) and `src/config.py` (URL, thresholds) c
 src/
   config.py     settings and thresholds
   extract.py    HTTP fetch with retries, raw storage
+  lire_prix.py  one price -> number, or refusal
   transform.py  HTML parsing, typing, dedupe
   quality.py    data quality gate
   load.py       SQLite schema + idempotent upsert + run log

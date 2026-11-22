@@ -29,7 +29,7 @@ input/*.xlsx  ──►  detect header row  ──►  map column aliases  ─�
 - **Column alias map**: new branch layout = one line in `COLUMN_ALIASES`.
 - **No silent guessing**: an unreadable price or impossible date is **rejected with a reason**, never filled with a made-up value.
 - **Fault tolerant**: one corrupt file is reported in "Errors", the others are still processed.
-- **Tested**: number/date parsing, product normalisation and a full end-to-end case (duplicates, blank rows, footer, bad date, broken file).
+- **Tested**: 44 tests, including real Excel date cells, ambiguous numbers (`1,299`), missing products, infinite or decimal quantities, every sheet of the report.
 
 ## Run
 
@@ -41,4 +41,4 @@ python -m src.main --input "C:/client/files"
 python -m pytest -q
 ```
 
-Demo result: 9 files from 3 branches → **549 clean rows**, duplicates removed, bad rows isolated, total revenue computed.
+Demo result: 9 files from 3 branches → **549 clean rows**, 45 rows set aside with their reason (27 duplicate lines, 9 bad prices, 9 bad dates), total revenue computed.

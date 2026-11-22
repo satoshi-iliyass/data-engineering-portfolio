@@ -50,5 +50,5 @@ def test_end_to_end(tmp_path):
     assert len(good) == 2
     assert set(good["branch"]) == {"Paris", "Lyon"}
     assert good.loc[good["branch"] == "Paris", "revenue"].item() == 370.0
-    assert len(rejected) == 1 and "bad date" in rejected["reason"].item()
+    assert rejected["reason"].tolist() == ["duplicate line; ", "bad date; "]      # nothing deleted in silence
     assert len(errors) == 1 and "broken" in errors[0]

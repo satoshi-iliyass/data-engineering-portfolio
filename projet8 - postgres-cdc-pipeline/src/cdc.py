@@ -41,6 +41,9 @@ SCD2_COLS = ("email", "country", "segment")
 
 HEADER = re.compile(r"^table (\w+)\.(\w+): (INSERT|UPDATE|DELETE): (.*)$", re.S)
 COLUMN = re.compile(r"(\w+)\[([^\]]+)\]:('(?:[^']|'')*'|\S+)")
+TRUNCATE = re.compile(r"^table ([^:]+): TRUNCATE: ")
+KEY_CHANGED = re.compile(r"^old-key: (\w+\[[^\]]+\]:\S+) new-tuple: (.*)$", re.S)
+TOAST = "unchanged-toast-datum"        # PostgreSQL does not re-send long values that did not change
 COMMIT = re.compile(r"^COMMIT (\d+)(?: \(at (.+)\))?$")
 
 
@@ -63,15 +66,38 @@ def parse_value(raw: str):
     return raw
 
 
-def parse_change(lsn: str, xid: int, seq: int, data: str) -> Change | None:
+def parse_columns(body: str) -> dict:
+    """'id[integer]:1 name[text]:'x'' -> {name: (type, value)}. Long values the database did not re-send are left out."""
+    if COLUMN.sub("", body).strip():
+        raise ValueError(f"cannot read columns: {body[:200]}")
+    return {name: (typ, parse_value(val)) for name, typ, val in COLUMN.findall(body) if val != TOAST}
+
+
+def parse_truncate(lsn: str, xid: int, seq: int, data: str) -> list[Change]:
+    names = [n.strip() for n in TRUNCATE.match(data).group(1).split(",")]
+    tracked = [t for t in config.TABLES if f"public.{t}" in names]
+    return [Change(lsn, seq + i, xid, t, "TRUNCATE") for i, t in enumerate(tracked)]
+
+
+def parse_change(lsn: str, xid: int, seq: int, data: str) -> list[Change]:
+    """One WAL line -> the changes to apply ([] = not one of our tables). A line we cannot read is an error,
+    never ignored: a skipped change would make the copy wrong in silence."""
+    if TRUNCATE.match(data):
+        return parse_truncate(lsn, xid, seq, data)
+    table = next((t for t in config.TABLES if data.startswith(f"table public.{t}: ")), None)
+    if table is None:
+        return []
     m = HEADER.match(data)
     if not m:
-        return None
-    _, table, op, body = m.groups()
-    if "new-tuple:" in body:                    # UPDATE that changed the key: keep the new row
-        body = body.split("new-tuple:", 1)[1]
-    cols = {name: (typ, parse_value(val)) for name, typ, val in COLUMN.findall(body)}
-    return Change(lsn, seq, xid, table, op, cols)
+        raise ValueError(f"cannot read change: {data[:200]}")
+    op, body = m.group(3), m.group(4)
+    moved = KEY_CHANGED.match(body) if op == "UPDATE" else None
+    if not moved:
+        return [Change(lsn, seq, xid, table, op, parse_columns(body))]
+    if f":{TOAST}" in body and len(parse_columns(moved[2])) < len(COLUMN.findall(moved[2])):
+        raise ValueError(f"{table}: key changed but a long value was not re-sent; set REPLICA IDENTITY FULL")
+    return [Change(lsn, seq, xid, table, "DELETE", parse_columns(moved[1])),
+            Change(lsn, seq + 1, xid, table, "UPDATE", parse_columns(moved[2]))]
 
 
 def read_changes(src, limit: int) -> tuple[list[Change], str | None]:
@@ -87,9 +113,10 @@ def read_changes(src, limit: int) -> tuple[list[Change], str | None]:
                 c.commit_ts = m.group(2)
             changes += pending
             last_commit = lsn
-        elif (c := parse_change(lsn, int(xid), seq, data)) and c.table in config.TABLES:
-            pending.append(c)
-            seq += 1
+        else:
+            new = parse_change(lsn, int(xid), seq, data)
+            pending += new
+            seq += len(new)
     return changes, last_commit
 
 
@@ -98,41 +125,56 @@ def read_changes(src, limit: int) -> tuple[list[Change], str | None]:
 def _upsert(tgt, c: Change) -> None:
     names = list(c.cols)
     vals = [c.cols[n][1] for n in names]
-    casts = ", ".join(f"%s::{c.cols[n][0]}" for n in names)
+    slots = ", ".join(["%s"] * len(names))        # the target column gives the type ('FR'::character would become 'F')
     sets = ", ".join(f"{n} = EXCLUDED.{n}" for n in names)
     pk = config.TABLES[c.table]
     tgt.execute(f"""INSERT INTO core.{c.table} ({', '.join(names)}, _deleted, _lsn, _synced_at)
-                    VALUES ({casts}, false, %s::pg_lsn, now())
+                    VALUES ({slots}, false, %s::pg_lsn, now())
                     ON CONFLICT ({pk}) DO UPDATE SET {sets}, _deleted = false, _lsn = EXCLUDED._lsn, _synced_at = now()
                     WHERE core.{c.table}._lsn < EXCLUDED._lsn""", [*vals, c.lsn])
 
 
 def _delete(tgt, c: Change) -> None:
     pk = config.TABLES[c.table]
-    typ, val = c.cols[pk]
+    val = c.cols[pk][1]
     tgt.execute(f"""UPDATE core.{c.table} SET _deleted = true, _lsn = %s::pg_lsn, _synced_at = now()
-                    WHERE {pk} = %s::{typ} AND _lsn < %s::pg_lsn""", (c.lsn, val, c.lsn))
+                    WHERE {pk} = %s AND _lsn < %s::pg_lsn""", (c.lsn, val, c.lsn))
+
+
+def _truncate(tgt, c: Change) -> None:
+    tgt.execute(f"UPDATE core.{c.table} SET _deleted = true, _lsn = %s::pg_lsn, _synced_at = now() "
+                f"WHERE NOT _deleted AND _lsn < %s::pg_lsn", (c.lsn, c.lsn))
+
+
+def _close_versions(tgt, c: Change, where: str, params: tuple = ()) -> None:
+    tgt.execute(f"UPDATE core.customers_history SET valid_to = %s, is_current = false WHERE is_current {where}",
+                (c.commit_ts, *params))
 
 
 def _scd2(tgt, c: Change) -> None:
     """Customers: new version only when a tracked attribute really changed."""
+    if c.op == "TRUNCATE":
+        return _close_versions(tgt, c, "")
     cid = int(c.cols["id"][1])
-    cur = tgt.execute("SELECT email, country, segment, _lsn::text FROM core.customers_history "
-                      "WHERE id = %s AND is_current", (cid,)).fetchone()
     if c.op == "DELETE":
-        if cur:
-            tgt.execute("UPDATE core.customers_history SET valid_to = %s, is_current = false "
-                        "WHERE id = %s AND is_current", (c.commit_ts, cid))
-        return
-    new = tuple(c.cols[k][1] for k in SCD2_COLS)
-    if cur and tuple(x.strip() if isinstance(x, str) else x for x in cur[:3]) == tuple(
-            x.strip() if isinstance(x, str) else x for x in new):
-        return
-    if cur:
-        tgt.execute("UPDATE core.customers_history SET valid_to = %s, is_current = false "
-                    "WHERE id = %s AND is_current", (c.commit_ts, cid))
+        return _close_versions(tgt, c, "AND id = %s", (cid,))
+    cur = tgt.execute("SELECT email, country, segment, valid_from > %s::timestamptz FROM core.customers_history "
+                      "WHERE id = %s AND is_current", (c.commit_ts, cid)).fetchone()
+    if cur and cur[3]:
+        return None                              # the snapshot already contained something newer
+    before = dict(zip(SCD2_COLS, cur[:3])) if cur else {}
+    after = {k: c.cols[k][1] if k in c.cols else before.get(k) for k in SCD2_COLS}
+    if cur and before == after:
+        return None
+    _close_versions(tgt, c, "AND id = %s", (cid,))
+    # several changes in one transaction share the same commit time: they are one version (the last one)
     tgt.execute("INSERT INTO core.customers_history VALUES (%s, %s, %s, %s, %s, NULL, true, %s::pg_lsn) "
-                "ON CONFLICT DO NOTHING", (cid, *new, c.commit_ts, c.lsn))
+                "ON CONFLICT (id, valid_from) DO UPDATE SET email = EXCLUDED.email, country = EXCLUDED.country, "
+                "segment = EXCLUDED.segment, valid_to = NULL, is_current = true, _lsn = EXCLUDED._lsn",
+                (cid, *after.values(), c.commit_ts, c.lsn))
+
+
+APPLY = {"INSERT": _upsert, "UPDATE": _upsert, "DELETE": _delete, "TRUNCATE": _truncate}
 
 
 def apply(tgt, changes: list[Change], last_commit: str) -> int:
@@ -147,7 +189,7 @@ def apply(tgt, changes: list[Change], last_commit: str) -> int:
     for c in changes:
         if tgt.execute("SELECT %s::pg_lsn <= %s::pg_lsn", (c.lsn, applied_lsn)).fetchone()[0]:
             continue                                    # already applied before a crash: skip
-        _delete(tgt, c) if c.op == "DELETE" else _upsert(tgt, c)
+        APPLY[c.op](tgt, c)
         if c.table == "customers":
             _scd2(tgt, c)
         n += 1

@@ -20,7 +20,7 @@ Typical client request: *"Our pandas scripts died when the data reached millions
 | Clean rows (silver) | **9,203,598** in 91 daily partitions |
 | Rejected to quarantine | **351,179 (3.68 %)**, each with its reason |
 | Total pipeline time | **~60–85 s** depending on the runner (last run: bronze 10.8 s · silver 43.4 s · gold 5.7 s) |
-| Queries on silver | revenue for one day: 0.5 s (reads 1 of 91 day folders) · all 91 days: 0.6 s. At 9 M rows Spark's fixed overhead dominates; the daily layout pays off as history grows to years |
+| Queries on silver | revenue for one day: 0.5 s · all 91 days: 0.6 s. Data is stored in 91 day folders, but no measurable gain at this size; partition pruning is not proven here |
 | Zone join | executed as **BroadcastHashJoin** (the 9.5 M-row table is never shuffled for it) |
 
 **Rejection reasons** (rules are explicit, so they can be discussed with the client): distance out of range 213,413 · negative fare 126,030 · trip longer than 6 h 5,434 · speed above 100 mph 2,841 · drop-off before pick-up 2,801 · non-positive total 639 · pick-up outside the loaded period 21.
@@ -42,7 +42,7 @@ Typical client request: *"Our pandas scripts died when the data reached millions
 | Join optimisation | Broadcast of the 265-row zone table |
 | Layout | `repartition(pickup_date)` before writing → one set of files per day, no tiny-file explosion |
 | Adaptive execution | AQE on, shuffle partitions tuned, zstd compression |
-| Portable | Same code on a laptop (`local[*]`), Databricks, EMR or Dataproc: only `SPARK_MASTER` changes |
+| Portable | Spark master and memory come from environment variables. Only run on a single Linux machine so far (not on Databricks or EMR) |
 
 ## Run
 

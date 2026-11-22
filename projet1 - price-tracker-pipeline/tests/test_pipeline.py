@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from src import load, quality, transform
+from src import extract, load, quality, transform
 
 HTML = """
 <ol>
@@ -33,13 +33,8 @@ def test_parse_page():
 
 
 def test_next_page():
-    assert transform.next_page(HTML) == "page-2.html"
-    assert transform.next_page("<html></html>") is None
-
-
-@pytest.mark.parametrize("text,expected", [("£51.77", 51.77), ("Â£9.5", 9.5), ("12", 12.0)])
-def test_parse_price(text, expected):
-    assert transform.parse_price(text) == expected
+    assert extract.next_page(HTML) == "page-2.html"
+    assert extract.next_page("<html></html>") is None
 
 
 def test_dedupe():

@@ -11,6 +11,12 @@ from . import config
 log = logging.getLogger(__name__)
 
 
+def is_permanent(err: Exception) -> bool:
+    """4xx = our request is wrong, retrying is useless. 429 = 'slow down', so retry."""
+    response = getattr(err, "response", None)
+    return response is not None and 400 <= response.status_code < 500 and response.status_code != 429
+
+
 def fetch(city: str, lat: float, lon: float) -> dict:
     params = {
         "latitude": lat, "longitude": lon,
@@ -22,16 +28,16 @@ def fetch(city: str, lat: float, lon: float) -> dict:
     for attempt in range(1, config.MAX_RETRIES + 1):
         try:
             resp = requests.get(config.API_URL, params=params, timeout=config.TIMEOUT_S)
-            if resp.status_code == 429 or resp.status_code >= 500:   # rate limit / server error -> retry
-                raise requests.HTTPError(f"HTTP {resp.status_code}")
             resp.raise_for_status()
             return resp.json()
         except (requests.RequestException, ValueError) as err:
             last_err = err
             log.warning("%s attempt %d/%d failed: %s", city, attempt, config.MAX_RETRIES, err)
+            if is_permanent(err):
+                break
             if attempt < config.MAX_RETRIES:
                 time.sleep(2 ** (attempt - 1))
-    raise RuntimeError(f"{city}: API failed after {config.MAX_RETRIES} attempts: {last_err}")
+    raise RuntimeError(f"{city}: API failed after {attempt} attempt(s): {last_err}")
 
 
 def save_raw(city: str, payload: dict, run_ts: datetime) -> None:

@@ -36,24 +36,37 @@ def run_job(name: str, job: dict) -> dict:
     return {"job": name, "status": "success", "seconds": secs, "last_log": tail[-1] if tail else ""}
 
 
+def newest_row(job: dict) -> str | None:
+    db = Path(job["dir"]) / job["db"]
+    if not db.exists():
+        return None
+    conn = sqlite3.connect(db)
+    try:
+        return conn.execute(job["freshness_sql"]).fetchone()[0]
+    finally:
+        conn.close()                      # `with sqlite3.connect()` only commits, it does not close
+
+
 @task
 def check_freshness(name: str, job: dict, now: datetime | None = None) -> dict:
     """Data SLA: the newest row must be younger than max_age_h, otherwise the dataset is 'stale'."""
     if "freshness_sql" not in job:
         return {"job": name, "fresh": None}
     now = now or datetime.now(timezone.utc)
-    db = Path(job["dir"]) / job["db"]
-    if not db.exists():
-        return {"job": name, "fresh": False, "age_h": None, "max_age_h": job["max_age_h"]}
-    conn = sqlite3.connect(db)
+    stale = {"job": name, "fresh": False, "age_h": None, "max_age_h": job["max_age_h"]}
     try:
-        latest = conn.execute(job["freshness_sql"]).fetchone()[0]
-    finally:
-        conn.close()                      # `with sqlite3.connect()` only commits, it does not close
-    if latest is None:
-        return {"job": name, "fresh": False, "age_h": None, "max_age_h": job["max_age_h"]}
-    age_h = round((now - datetime.fromisoformat(latest)).total_seconds() / 3600, 1)
+        latest = newest_row(job)
+        if latest is None:
+            return {**stale, "error": "no data"}
+        age_h = round((now - datetime.fromisoformat(latest)).total_seconds() / 3600, 1)
+    except (sqlite3.Error, ValueError, TypeError) as err:      # a check we cannot run counts as 'not fresh'
+        return {**stale, "error": f"cannot check: {err}"}
     return {"job": name, "fresh": age_h <= job["max_age_h"], "age_h": age_h, "max_age_h": job["max_age_h"]}
+
+
+def write_alert_log(line: str) -> None:
+    with open(config.REPORT_DIR / "alerts.log", "a", encoding="utf-8") as f:
+        f.write(line + "\n")
 
 
 @task
@@ -61,12 +74,14 @@ def send_alert(text: str) -> None:
     """Alert to Slack if a webhook is configured; always appended to reports/alerts.log."""
     config.REPORT_DIR.mkdir(exist_ok=True)
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    with open(config.REPORT_DIR / "alerts.log", "a", encoding="utf-8") as f:
-        f.write(f"{stamp} {text}\n")
+    write_alert_log(f"{stamp} {text}")
     if config.SLACK_WEBHOOK_URL:
         req = urllib.request.Request(config.SLACK_WEBHOOK_URL, data=json.dumps({"text": text}).encode(),
                                      headers={"Content-Type": "application/json"})
-        urllib.request.urlopen(req, timeout=10)
+        try:
+            urllib.request.urlopen(req, timeout=10)
+        except OSError as err:            # Slack down must not stop the run report
+            write_alert_log(f"{stamp} Slack alert not sent: {err}")
 
 
 @task

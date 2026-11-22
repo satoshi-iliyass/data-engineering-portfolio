@@ -5,14 +5,23 @@ from datetime import date
 from pathlib import Path
 
 import requests
+from bs4 import BeautifulSoup
 
 from . import config
 
 log = logging.getLogger(__name__)
 
 
+def is_permanent(err: requests.RequestException) -> bool:
+    """4xx = our request is wrong (e.g. 404), retrying is useless. 429 = 'slow down', so retry."""
+    if err.response is None:
+        return False
+    code = err.response.status_code
+    return 400 <= code < 500 and code != 429
+
+
 def fetch(url: str, session: requests.Session) -> str:
-    """GET with retries + exponential backoff (1s, 2s, 4s)."""
+    """GET; temporary failures are retried (wait 1 s, then 2 s), a missing page (4xx) is not."""
     last_err = None
     for attempt in range(1, config.MAX_RETRIES + 1):
         try:
@@ -23,9 +32,16 @@ def fetch(url: str, session: requests.Session) -> str:
         except requests.RequestException as err:
             last_err = err
             log.warning("GET %s attempt %d/%d failed: %s", url, attempt, config.MAX_RETRIES, err)
+            if is_permanent(err):
+                break
             if attempt < config.MAX_RETRIES:
                 time.sleep(2 ** (attempt - 1))
     raise RuntimeError(f"giving up on {url}: {last_err}")
+
+
+def next_page(html: str) -> str | None:
+    link = BeautifulSoup(html, "html.parser").select_one("li.next > a")
+    return link["href"] if link else None
 
 
 def save_raw(html: str, page_name: str, run_date: date) -> Path:
@@ -38,8 +54,6 @@ def save_raw(html: str, page_name: str, run_date: date) -> Path:
 
 def extract_all(run_date: date) -> list[Path]:
     """Follow the 'next' link page by page; return the saved raw files."""
-    from .transform import next_page  # local import keeps modules decoupled
-
     session = requests.Session()
     session.headers["User-Agent"] = config.USER_AGENT
     page, saved = config.START_PAGE, []

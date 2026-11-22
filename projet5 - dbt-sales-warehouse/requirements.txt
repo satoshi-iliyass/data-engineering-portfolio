@@ -1,1 +1,1 @@
-﻿dbt-duckdb>=1.8
+dbt-duckdb==1.11.1
