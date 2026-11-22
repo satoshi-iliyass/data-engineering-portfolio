@@ -79,6 +79,27 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python -m pytest -q -rs
 
+  kafka-streaming:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: "projet10 - kafka-streaming"
+    env:
+      KAFKA_ADRESSE: localhost:9092
+      REQUIRE_KAFKA: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start a real Kafka broker
+        run: |
+          docker run -d --name kafka -p 9092:9092 apache/kafka:4.3.2
+          for i in $(seq 1 60); do docker exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list && break; sleep 1; done
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q -rs
+
   spark-nyc-taxi:
     runs-on: ubuntu-latest
     timeout-minutes: 40
